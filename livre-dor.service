@@ -1,0 +1,15 @@
+[Unit]
+Description=Livre d'or audio
+After=sound.target
+
+[Service]
+ExecStart=/home/julien/livre-dor/target/release/livre-dor
+Restart=always
+RestartSec=5
+User=julien
+WorkingDirectory=/home/julien/livre-dor
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
