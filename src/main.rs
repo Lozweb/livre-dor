@@ -26,27 +26,27 @@ fn main() -> Result<()> {
     println!("Livre d'or prêt.");
 
     let mut state = State::Idle;
+    // Au démarrage, le téléphone est normalement raccroché (circuit ouvert = High)
     let mut last_button = Level::High;
 
     loop {
         let current_button = buttons.button.read();
-        let pressed = gpio::is_rising_edge(current_button, last_button);
-        last_button = current_button;
+        // On vérifie si l'utilisateur vient de décrocher le combiné
+        let decroche = gpio::a_decroche(current_button, last_button);
 
         match state {
             State::Idle => {
-                if pressed {
-                    println!("Bouton appuyé → lecture de l'intro");
+                if decroche {
+                    println!("Téléphone décroché → lecture de l'intro");
                     leds.led.set_low();
                     state = State::PlayingIntro;
                 }
             }
             State::PlayingIntro => {
                 let interrupted = audio::play(INTRO_AUDIO, &buttons.button)?;
-                gpio::wait_for_release(&buttons.button);
                 leds.led.set_high();
                 if interrupted {
-                    println!("Intro interrompue → retour en attente");
+                    println!("Téléphone raccroché pendant l'intro → retour en attente");
                     state = State::Idle;
                 } else {
                     println!("Intro terminée → début de l'enregistrement");
@@ -55,15 +55,16 @@ fn main() -> Result<()> {
             }
             State::Recording => {
                 let path = files::timestamped_wav_path(RECORDINGS_DIR);
-                println!("Enregistrement → {}", path);
+                println!("Enregistrement en cours... Parlez après le bip.");
                 audio::record_until_button(&path, &buttons.button)?;
-                gpio::wait_for_release(&buttons.button);
-                println!("Enregistrement sauvegardé → retour en attente");
+                println!("Téléphone raccroché → Enregistrement sauvegardé");
                 leds.led.set_high();
                 state = State::Idle;
             }
         }
 
+        // On rafraîchit l'état réel pour éviter le décalage de détection au prochain tour
+        last_button = buttons.button.read();
         thread::sleep(Duration::from_millis(50));
     }
 }

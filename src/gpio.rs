@@ -1,6 +1,5 @@
 use anyhow::Result;
 use rppal::gpio::{Gpio, InputPin, Level, OutputPin};
-use std::{thread, time::Duration};
 
 pub struct Buttons {
     pub button: InputPin,
@@ -17,13 +16,7 @@ pub fn init(gpio_led: u8, gpio_button: u8) -> Result<(Leds, Buttons)> {
     Ok((Leds { led }, Buttons { button }))
 }
 
-pub fn is_rising_edge(current: Level, last: Level) -> bool {
+// Décrocher : le combiné quitte le socle, le circuit se ferme (High -> Low)
+pub fn a_decroche(current: Level, last: Level) -> bool {
     current == Level::Low && last == Level::High
-}
-
-pub fn wait_for_release(button: &InputPin) {
-    while button.read() == Level::Low {
-        thread::sleep(Duration::from_millis(50));
-    }
-    thread::sleep(Duration::from_millis(300));
 }

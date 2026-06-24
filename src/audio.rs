@@ -27,9 +27,10 @@ pub fn play(path: &str, button: &InputPin) -> Result<bool> {
 
     while !sink.empty() {
         let current = button.read();
-        if is_rising_edge(current, last) {
+        // Détection du raccrochage : le combiné est reposé, le circuit s'ouvre (Low -> High)
+        if current == Level::High && last == Level::Low {
             sink.stop();
-            return Ok(true);
+            return Ok(true); // Interrompu par le raccrochage
         }
         last = current;
         thread::sleep(Duration::from_millis(50));
@@ -92,7 +93,8 @@ pub fn record_until_button(path: &str, button: &InputPin) -> Result<()> {
     let mut last = button.read();
     loop {
         let current = button.read();
-        if is_rising_edge(current, last) {
+        // Détection du raccrochage : on arrête d'enregistrer dès que le combiné est reposé (Low -> High)
+        if current == Level::High && last == Level::Low {
             break;
         }
         last = current;
@@ -109,8 +111,4 @@ pub fn record_until_button(path: &str, button: &InputPin) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn is_rising_edge(current: Level, last: Level) -> bool {
-    current == Level::Low && last == Level::High
 }
