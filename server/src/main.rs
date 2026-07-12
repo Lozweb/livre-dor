@@ -10,12 +10,14 @@ const FRONTEND_DIST: &str = "/home/julien/livre-dor/frontend/dist";
 
 #[tokio::main]
 async fn main() {
-    let state = Arc::new(RwLock::new(PhoneState::Idle));
-    let phone_state = Arc::clone(&state);
+    let phone_state = Arc::new(RwLock::new(PhoneState::Idle));
 
-    task::spawn_blocking(move || {
-        if let Err(e) = phone::run(phone_state) {
-            eprintln!("phone error: {e}");
+    task::spawn_blocking({
+        let state = Arc::clone(&phone_state);
+        move || {
+            if let Err(e) = phone::run(state) {
+                eprintln!("phone error: {e}");
+            }
         }
     });
 
@@ -24,9 +26,11 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/health", get(api::health::health))
+        .route("/api/state", get(api::state::get_state))
         .route("/api/recordings", get(api::recordings::list))
         .route("/api/recordings/:name", get(api::recordings::stream))
         .route("/api/recordings/:name/download", get(api::recordings::download))
+        .with_state(phone_state)
         .fallback_service(spa);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:80").await.unwrap();
