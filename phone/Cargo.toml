@@ -1,0 +1,20 @@
+[package]
+name = "phone"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "phone"
+path = "src/lib.rs"
+
+[[bin]]
+name = "phone"
+path = "src/main.rs"
+
+[dependencies]
+rppal = "0.18"
+rodio = { version = "0.17", default-features = false, features = ["wav", "mp3"] }
+cpal = "0.15"
+hound = "3.5"
+chrono = "0.4"
+anyhow = "1"

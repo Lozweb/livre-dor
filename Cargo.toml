@@ -1,12 +1,3 @@
-[package]
-name = "livre-dor"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-rppal = "0.18"
-rodio = { version = "0.17", default-features = false, features = ["wav", "mp3"] }
-cpal = "0.15"
-hound = "3.5"
-chrono = "0.4"
-anyhow = "1"
+[workspace]
+members = ["phone", "server"]
+resolver = "2"

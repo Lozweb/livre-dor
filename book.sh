@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# ==============================================================================
-# CLI de Gestion du Projet Livre d'or (book.sh)
-# ==============================================================================
-
-# Couleurs pour l'affichage
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
@@ -12,76 +7,85 @@ RED='\033[0;31m'
 RESET='\033[0m'
 
 # ==============================================================================
-# CONFIGURATION (À modifier avec tes propres accès)
+# CONFIGURATION (À modifier selon votre installation)
 # ==============================================================================
 REMOTE_USER="julien"
 REMOTE_HOST="192.168.1.42"
 REMOTE_DIR="/home/julien/livre-dor"
 SERVICE_NAME="livre-dor"
+HOTSPOT_SSID="livre-dor"
+HOTSPOT_PASSWORD="metapixl"
+HOTSPOT_CHANNEL="11"
 # ==============================================================================
 
-log_info() { echo -e "${BLUE}[INFO]${RESET} $1"; }
+log_info()    { echo -e "${BLUE}[INFO]${RESET} $1"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${RESET} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${RESET} $1"; }
-log_error() { echo -e "${RED}[ERROR]${RESET} $1"; }
+log_warn()    { echo -e "${YELLOW}[WARN]${RESET} $1"; }
+log_error()   { echo -e "${RED}[ERROR]${RESET} $1"; }
 
 show_help() {
     echo "Usage: ./book.sh [commande]"
     echo ""
     echo "Commandes disponibles :"
-    echo "  deploy   - Synchronise, compile sur le serveur distant et redémarre"
-    echo "  rsync    - Synchronise uniquement les fichiers locaux vers le serveur"
-    echo "  restart  - Redémarre le service systemd sur le serveur"
-    echo "  status   - Vérifie l'état du service systemd sur le serveur"
-    echo "  logs     - Affiche les logs en direct (journalctl) du serveur"
-    echo "  build    - Compile le projet localement en mode release"
+    echo "  deploy   - Synchronise, compile -p phone sur le Pi et redémarre le service"
+    echo "  rsync    - Synchronise uniquement les sources vers le Pi"
+    echo "  build    - Compile -p server en local"
+    echo "  restart  - Redémarre le service systemd sur le Pi"
+    echo "  status   - Vérifie l'état du service systemd"
+    echo "  logs     - Affiche les logs en direct (journalctl)"
+    echo "  hotspot  - Configure le hotspot WiFi dual-mode sur le Pi"
     echo "  help     - Affiche cette aide"
 }
 
 cmd_rsync() {
-    log_info "Synchronisation des fichiers vers le serveur distant..."
-    # On exclut le dossier target/ local pour ne pas envoyer les builds lourds
-    rsync -avz --delete --exclude 'target/' --exclude '.git/' --exclude '.github/' ./ ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}
+    log_info "Synchronisation des sources vers le Pi..."
+    rsync -avz --delete \
+        --exclude 'target/' --exclude '.git/' --exclude '.github/' \
+        ./ ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}
     if [ $? -eq 0 ]; then
-        log_success "Synchronisation rsync terminée avec succès !"
+        log_success "Synchronisation terminée."
     else
-        log_error "Erreur lors de la synchronisation rsync."
+        log_error "Erreur rsync."
         exit 1
     fi
 }
 
 cmd_restart() {
-    log_info "Redémarrage du service systemd : ${SERVICE_NAME}..."
+    log_info "Redémarrage du service ${SERVICE_NAME}..."
     ssh ${REMOTE_USER}@${REMOTE_HOST} "sudo systemctl restart ${SERVICE_NAME}"
     if [ $? -eq 0 ]; then
-        log_success "Le service a été redémarré."
+        log_success "Service redémarré."
     else
         log_error "Impossible de redémarrer le service."
         exit 1
     fi
 }
 
-# Analyse de l'argument reçu
 case "$1" in
 
-deploy)
-        log_info "🚀 Lancement de la procédure globale de déploiement..."
+    deploy)
+        log_info "Déploiement complet..."
         cmd_rsync
 
-        log_info "🛠️  Compilation en cours (Cargo build --release) sur le serveur..."
-        # Utilisation de source $HOME/.cargo/env pour charger les variables d'environnement de Rust
-        ssh ${REMOTE_USER}@${REMOTE_HOST} "source \$HOME/.cargo/env && cd ${REMOTE_DIR} && cargo build --release"
+        log_info "Compilation -p server sur le Pi..."
+        ssh ${REMOTE_USER}@${REMOTE_HOST} \
+            "source \$HOME/.cargo/env && cd ${REMOTE_DIR} && cargo build --release -p server"
         if [ $? -ne 0 ]; then
-            log_error "La compilation distante a échoué. Avortement."
+            log_error "Compilation distante échouée."
             exit 1
         fi
 
         cmd_restart
-        log_success "🎉 Déploiement terminé avec succès !"
+        log_success "Déploiement terminé."
         ;;
 
     rsync)
         cmd_rsync
+        ;;
+
+    build)
+        log_info "Compilation locale -p server..."
+        cargo build --release -p server
         ;;
 
     restart)
@@ -89,18 +93,26 @@ deploy)
         ;;
 
     status)
-        log_info "Vérification du statut de ${SERVICE_NAME}..."
+        log_info "Statut de ${SERVICE_NAME}..."
         ssh ${REMOTE_USER}@${REMOTE_HOST} "sudo systemctl status ${SERVICE_NAME}"
         ;;
 
     logs)
-        log_info "Affichage des logs en direct (Ctrl+C pour quitter)..."
+        log_info "Logs en direct (Ctrl+C pour quitter)..."
         ssh ${REMOTE_USER}@${REMOTE_HOST} "sudo journalctl -u ${SERVICE_NAME} -f -n 50"
         ;;
 
-    build)
-        log_info "Compilation locale en mode release..."
-        cargo build --release
+    hotspot)
+        log_info "Configuration du hotspot WiFi sur le Pi..."
+        rsync -q scripts/setup-hotspot.sh ${REMOTE_USER}@${REMOTE_HOST}:/tmp/setup-hotspot.sh
+        ssh ${REMOTE_USER}@${REMOTE_HOST} \
+            "HOTSPOT_SSID='${HOTSPOT_SSID}' HOTSPOT_PASSWORD='${HOTSPOT_PASSWORD}' HOTSPOT_CHANNEL='${HOTSPOT_CHANNEL}' bash /tmp/setup-hotspot.sh"
+        if [ $? -eq 0 ]; then
+            log_success "Hotspot configuré."
+        else
+            log_error "Échec de la configuration du hotspot."
+            exit 1
+        fi
         ;;
 
     help|--help|-h|"")

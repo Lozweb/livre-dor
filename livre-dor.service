@@ -3,7 +3,7 @@ Description=Livre d'or audio
 After=sound.target
 
 [Service]
-ExecStart=/home/julien/livre-dor/target/release/livre-dor
+ExecStart=/home/julien/livre-dor/target/release/server
 Restart=always
 RestartSec=5
 User=julien

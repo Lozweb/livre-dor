@@ -1,23 +1,28 @@
 use anyhow::Result;
 use rppal::gpio::Level;
-use std::{thread, time::Duration};
+use std::{
+    sync::{Arc, RwLock},
+    thread,
+    time::Duration,
+};
 
 mod audio;
 mod files;
 mod gpio;
 
-const GPIO_LED: u8 = 17;
-const GPIO_BUTTON: u8 = 27;
-const RECORDINGS_DIR: &str = "/home/julien/recordings";
-const INTRO_AUDIO: &str = "/home/julien/livre-dor/intro.wav";
+pub const GPIO_LED: u8 = 17;
+pub const GPIO_BUTTON: u8 = 27;
+pub const RECORDINGS_DIR: &str = "/home/julien/recordings";
+pub const INTRO_AUDIO: &str = "/home/julien/livre-dor/intro.wav";
 
-enum State {
+#[derive(Debug, Clone, PartialEq)]
+pub enum PhoneState {
     Idle,
     PlayingIntro,
     Recording,
 }
 
-fn main() -> Result<()> {
+pub fn run(state: Arc<RwLock<PhoneState>>) -> Result<()> {
     files::ensure_recordings_dir(RECORDINGS_DIR)?;
 
     let (mut leds, buttons) = gpio::init(GPIO_LED, GPIO_BUTTON)?;
@@ -25,45 +30,43 @@ fn main() -> Result<()> {
 
     println!("Livre d'or prêt.");
 
-    let mut state = State::Idle;
-    // Au démarrage, le téléphone est normalement raccroché (circuit ouvert = High)
+    // Au démarrage, le téléphone est raccroché (circuit ouvert = High)
     let mut last_button = Level::High;
 
     loop {
         let current_button = buttons.button.read();
-        // On vérifie si l'utilisateur vient de décrocher le combiné
         let decroche = gpio::a_decroche(current_button, last_button);
 
-        match state {
-            State::Idle => {
+        let current = state.read().unwrap().clone();
+        match current {
+            PhoneState::Idle => {
                 if decroche {
                     println!("Téléphone décroché → lecture de l'intro");
                     leds.led.set_low();
-                    state = State::PlayingIntro;
+                    *state.write().unwrap() = PhoneState::PlayingIntro;
                 }
             }
-            State::PlayingIntro => {
+            PhoneState::PlayingIntro => {
                 let interrupted = audio::play(INTRO_AUDIO, &buttons.button)?;
                 leds.led.set_high();
                 if interrupted {
                     println!("Téléphone raccroché pendant l'intro → retour en attente");
-                    state = State::Idle;
+                    *state.write().unwrap() = PhoneState::Idle;
                 } else {
                     println!("Intro terminée → début de l'enregistrement");
-                    state = State::Recording;
+                    *state.write().unwrap() = PhoneState::Recording;
                 }
             }
-            State::Recording => {
+            PhoneState::Recording => {
                 let path = files::timestamped_wav_path(RECORDINGS_DIR);
                 println!("Enregistrement en cours... Parlez après le bip.");
                 audio::record_until_button(&path, &buttons.button)?;
                 println!("Téléphone raccroché → Enregistrement sauvegardé");
                 leds.led.set_high();
-                state = State::Idle;
+                *state.write().unwrap() = PhoneState::Idle;
             }
         }
 
-        // On rafraîchit l'état réel pour éviter le décalage de détection au prochain tour
         last_button = buttons.button.read();
         thread::sleep(Duration::from_millis(50));
     }

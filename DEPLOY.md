@@ -1,14 +1,12 @@
 # Déploiement — Livre d'or
 
-Raspberry Pi 4 · `julien@192.168.1.42`
+Ce document décrit la mise en place complète sur un Raspberry Pi 4 vierge.
 
 ---
 
-## 1. Préparer le Raspberry Pi (une seule fois)
+## Prérequis
 
-```bash
-ssh julien@192.168.1.42
-```
+### Sur le Pi (une seule fois)
 
 ```bash
 sudo apt update
@@ -18,102 +16,108 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
 
----
-
-## 2. Envoyer les sources depuis votre machine
+### Clé SSH (depuis votre machine)
 
 ```bash
-rsync -avz --exclude target/ \
-  /home/julien/workspace/perso/livre-dor/ \
-  julien@192.168.1.42:/home/julien/livre-dor/
+ssh-copy-id PI_USER@PI_HOST
 ```
 
 ---
 
-## 3. Compiler sur le Pi
+## Configurer book.sh
+
+Éditez la section `CONFIGURATION` en haut de `book.sh` :
 
 ```bash
-ssh julien@192.168.1.42
-cd /home/julien/livre-dor
-cargo build --release
-```
-
-Le binaire compilé se trouve dans `target/release/livre-dor`.
-
----
-
-## 4. Déposer le fichier audio d'intro
-
-```bash
-scp /chemin/local/intro.wav julien@192.168.1.42:/home/julien/livre-dor/intro.wav
+REMOTE_USER="pi"                 # utilisateur SSH sur le Pi
+REMOTE_HOST="192.168.1.X"        # IP du Pi sur votre réseau
+REMOTE_DIR="/home/pi/livre-dor"  # chemin de déploiement sur le Pi
+SERVICE_NAME="livre-dor"
+HOTSPOT_SSID="livre-dor"         # SSID du hotspot WiFi
+HOTSPOT_PASSWORD="votremotdepasse"
+HOTSPOT_CHANNEL="6"              # voir note canal ci-dessous
 ```
 
 ---
 
-## 5. Créer le dossier d'enregistrements
+## Déployer l'application
 
 ```bash
-ssh julien@192.168.1.42 "mkdir -p /home/julien/recordings"
+./book.sh deploy
 ```
+
+Cette commande :
+1. Synchronise les sources vers le Pi (`rsync`)
+2. Compile `server` en mode release sur le Pi (`cargo build --release -p server`)
+3. Redémarre le service systemd
 
 ---
 
-## 6. Installer et activer le service systemd
+## Configurer le service systemd (une seule fois)
+
+Adaptez le chemin utilisateur dans `livre-dor.service` si votre user Pi n'est pas `julien`, puis :
 
 ```bash
-ssh julien@192.168.1.42
-sudo cp /home/julien/livre-dor/livre-dor.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable livre-dor
-sudo systemctl start livre-dor
+./book.sh rsync
+ssh PI_USER@PI_HOST "sudo cp ~/livre-dor/livre-dor.service /etc/systemd/system/ && \
+  sudo systemctl daemon-reload && \
+  sudo systemctl enable livre-dor && \
+  sudo systemctl start livre-dor"
 ```
+
+> À répéter uniquement si `livre-dor.service` est modifié. Pour les mises à jour de code, `./book.sh deploy` suffit.
 
 ---
 
-## 7. Vérifier que le service tourne
+## Configurer le hotspot WiFi
+
+Le Pi fonctionne en mode dual WiFi : connecté à votre box **et** point d'accès pour smartphones et laptops.
+
+### Choisir le bon canal
+
+Le canal du hotspot doit correspondre à celui de votre box, sinon le laptop ne verra pas le réseau. Pour trouver le canal de votre box :
 
 ```bash
-sudo systemctl status livre-dor
+nmcli dev wifi list
+# Repérez votre SSID et notez la colonne CHAN
 ```
 
----
-
-## 8. Suivre les logs en temps réel
+Renseignez cette valeur dans `HOTSPOT_CHANNEL` dans `book.sh`, puis :
 
 ```bash
-sudo journalctl -u livre-dor -f
+./book.sh hotspot
 ```
+
+Le script `scripts/setup-hotspot.sh` :
+- Crée l'interface virtuelle `uap0` (persistante via systemd)
+- Configure NetworkManager pour le hotspot sur `uap0`
+- Laisse `wlan0` connecté à votre box normalement
+- Est idempotent : relancez-le sans risque pour modifier la config
+
+**Variables disponibles dans `book.sh` :**
+
+| Variable | Description |
+|---|---|
+| `HOTSPOT_SSID` | Nom du réseau WiFi diffusé |
+| `HOTSPOT_PASSWORD` | Mot de passe WPA2 (min. 8 caractères) |
+| `HOTSPOT_CHANNEL` | Canal WiFi — doit correspondre à votre box |
+
+**Accès une fois connecté au hotspot :**
+- `http://192.168.4.1:8080` (IP fixe du Pi sur le hotspot)
+- `http://PI_HOST:8080` (IP du Pi sur votre réseau local)
 
 ---
 
 ## Commandes utiles
 
 ```bash
-# Statut du service
-sudo systemctl status livre-dor
-
-# Arrêter le service
-sudo systemctl stop livre-dor
-
-# Redémarrer après une mise à jour
-sudo systemctl restart livre-dor
-
-# Logs depuis le dernier démarrage
-sudo journalctl -u livre-dor -b
-```
-
----
-
-## Mise à jour du code
-
-Depuis votre machine, après modification des sources :
-
-```bash
-rsync -avz --exclude target/ \
-  /home/julien/workspace/perso/livre-dor/ \
-  julien@192.168.1.42:/home/julien/livre-dor/
-
-ssh julien@192.168.1.42 "cd /home/julien/livre-dor && cargo build --release && sudo systemctl restart livre-dor"
+./book.sh deploy   # synchronise + compile + redémarre (mise à jour standard)
+./book.sh hotspot  # (re)configure le hotspot WiFi
+./book.sh status   # état du service
+./book.sh logs     # logs en direct
+./book.sh restart  # redémarrage rapide sans recompilation
+./book.sh rsync    # synchronisation seule
+./book.sh build    # compile -p server en local
 ```
 
 ---
@@ -121,13 +125,23 @@ ssh julien@192.168.1.42 "cd /home/julien/livre-dor && cargo build --release && s
 ## Structure des fichiers sur le Pi
 
 ```
-/home/julien/livre-dor/
-├── src/
-├── Cargo.toml
-├── intro.wav               ← fichier audio d'introduction
-└── target/release/livre-dor
+/home/PI_USER/livre-dor/
+├── phone/src/          ← machine à états téléphone (GPIO + audio)
+│   ├── lib.rs          ← PhoneState, run() — importé par server
+│   ├── main.rs         ← binaire standalone (dev/test)
+│   ├── audio.rs
+│   ├── gpio.rs
+│   └── files.rs
+├── server/src/         ← serveur web (axum)
+│   └── main.rs
+├── scripts/
+│   └── setup-hotspot.sh
+├── Cargo.toml          ← workspace [phone, server]
+├── intro.wav           ← message d'accueil
+└── target/release/
+    └── server          ← binaire de production
 
-/home/julien/recordings/    ← enregistrements horodatés (YYYYMMDD_HHMMSS.wav)
-
-/etc/systemd/system/livre-dor.service
+/home/PI_USER/recordings/   ← enregistrements (YYYYMMDD_HHMMSS.wav)
+/etc/systemd/system/livre-dor.service   ← ExecStart → server
+/etc/systemd/system/uap0.service        ← interface virtuelle AP
 ```
