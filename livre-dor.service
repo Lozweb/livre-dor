@@ -8,6 +8,8 @@ Restart=always
 RestartSec=5
 User=julien
 WorkingDirectory=/home/julien/livre-dor
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 StandardOutput=journal
 StandardError=journal
 

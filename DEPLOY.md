@@ -1,6 +1,6 @@
 # Déploiement — Livre d'or
 
-Ce document décrit la mise en place complète sur un Raspberry Pi 4 vierge.
+Guide complet pour déployer le projet sur un Raspberry Pi 4 depuis zéro.
 
 ---
 
@@ -16,11 +16,11 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
 
-### Clé SSH (depuis votre machine)
+### Sur le laptop de déploiement
 
-```bash
-ssh-copy-id PI_USER@PI_HOST
-```
+- `ssh` et `rsync`
+- `npm` (Node.js ≥ 18) pour builder le frontend
+- Clé SSH configurée : `ssh-copy-id PI_USER@PI_HOST`
 
 ---
 
@@ -40,20 +40,9 @@ HOTSPOT_CHANNEL="6"              # voir note canal ci-dessous
 
 ---
 
-## Déployer l'application
+## Première installation
 
-```bash
-./book.sh deploy
-```
-
-Cette commande :
-1. Synchronise les sources vers le Pi (`rsync`)
-2. Compile `server` en mode release sur le Pi (`cargo build --release -p server`)
-3. Redémarre le service systemd
-
----
-
-## Configurer le service systemd (une seule fois)
+### 1. Configurer le service systemd
 
 Adaptez le chemin utilisateur dans `livre-dor.service` si votre user Pi n'est pas `julien`, puis :
 
@@ -61,24 +50,19 @@ Adaptez le chemin utilisateur dans `livre-dor.service` si votre user Pi n'est pa
 ./book.sh rsync
 ssh PI_USER@PI_HOST "sudo cp ~/livre-dor/livre-dor.service /etc/systemd/system/ && \
   sudo systemctl daemon-reload && \
-  sudo systemctl enable livre-dor && \
-  sudo systemctl start livre-dor"
+  sudo systemctl enable livre-dor"
 ```
 
 > À répéter uniquement si `livre-dor.service` est modifié. Pour les mises à jour de code, `./book.sh deploy` suffit.
 
----
-
-## Configurer le hotspot WiFi
+### 2. Configurer le hotspot WiFi
 
 Le Pi fonctionne en mode dual WiFi : connecté à votre box **et** point d'accès pour smartphones et laptops.
 
-### Choisir le bon canal
-
-Le canal du hotspot doit correspondre à celui de votre box, sinon le laptop ne verra pas le réseau. Pour trouver le canal de votre box :
+Le canal du hotspot doit correspondre à celui de votre box, sinon certains appareils ne verront pas le réseau. Pour trouver le canal de votre box :
 
 ```bash
-nmcli dev wifi list
+nmcli dev wifi list | grep '\*'
 # Repérez votre SSID et notez la colonne CHAN
 ```
 
@@ -94,30 +78,79 @@ Le script `scripts/setup-hotspot.sh` :
 - Laisse `wlan0` connecté à votre box normalement
 - Est idempotent : relancez-le sans risque pour modifier la config
 
-**Variables disponibles dans `book.sh` :**
+### 3. Configurer mDNS (accès par nom)
 
-| Variable | Description |
-|---|---|
-| `HOTSPOT_SSID` | Nom du réseau WiFi diffusé |
-| `HOTSPOT_PASSWORD` | Mot de passe WPA2 (min. 8 caractères) |
-| `HOTSPOT_CHANNEL` | Canal WiFi — doit correspondre à votre box |
+```bash
+./book.sh setup-mdns
+```
 
-**Accès une fois connecté au hotspot :**
-- `http://192.168.4.1:8080` (IP fixe du Pi sur le hotspot)
-- `http://PI_HOST:8080` (IP du Pi sur votre réseau local)
+Installe `avahi-daemon` et configure le hostname `livre-dor` sur le Pi. Après cette étape, le Pi est accessible sur `http://livre-dor.local` depuis tous les appareils (macOS, Linux, Windows 10+, iOS, Android).
+
+À faire **une seule fois**.
+
+### 4. Premier déploiement
+
+```bash
+./book.sh deploy
+```
+
+Cette commande :
+1. Build le frontend React (`npm run build` dans `frontend/`)
+2. Synchronise les sources vers le Pi (`rsync`)
+3. Compile `server` en mode release sur le Pi (`cargo build --release -p server`)
+4. Redémarre le service systemd
 
 ---
 
-## Commandes utiles
+## Déploiements suivants
 
 ```bash
-./book.sh deploy   # synchronise + compile + redémarre (mise à jour standard)
-./book.sh hotspot  # (re)configure le hotspot WiFi
-./book.sh status   # état du service
-./book.sh logs     # logs en direct
-./book.sh restart  # redémarrage rapide sans recompilation
-./book.sh rsync    # synchronisation seule
-./book.sh build    # compile -p server en local
+./book.sh deploy
+```
+
+Suffit pour tout mettre à jour — frontend et backend.
+
+---
+
+## Commandes disponibles
+
+| Commande | Description |
+|---|---|
+| `./book.sh deploy` | Build frontend + sync + compile sur Pi + restart |
+| `./book.sh rsync` | Sync les sources uniquement (sans build ni restart) |
+| `./book.sh build` | Compile `-p server` en local (vérification) |
+| `./book.sh restart` | Redémarre le service sur le Pi |
+| `./book.sh status` | État du service systemd |
+| `./book.sh logs` | Logs en direct (`journalctl -f`) |
+| `./book.sh hotspot` | Configure le hotspot WiFi dual-mode |
+| `./book.sh setup-mdns` | Configure `livre-dor.local` via avahi (une seule fois) |
+
+---
+
+## Accès à l'interface web
+
+| Situation | URL |
+|---|---|
+| Même réseau local (box) | `http://livre-dor.local` |
+| Connecté au hotspot du Pi | `http://livre-dor.local` |
+| IP directe (fallback) | `http://192.168.1.X` (adapter selon votre config) |
+
+---
+
+## Développement local
+
+```bash
+# Terminal 1 — serveur Rust (API uniquement)
+cargo run -p server
+
+# Terminal 2 — frontend avec hot-reload
+cd frontend && npm run dev
+```
+
+Le proxy Vite redirige `/api` vers le serveur Rust. L'adresse cible est configurable :
+
+```bash
+VITE_API_TARGET=http://192.168.1.42 npm run dev
 ```
 
 ---
@@ -134,6 +167,7 @@ Le script `scripts/setup-hotspot.sh` :
 │   └── files.rs
 ├── server/src/         ← serveur web (axum)
 │   └── main.rs
+├── frontend/dist/      ← build React (servi par axum)
 ├── scripts/
 │   └── setup-hotspot.sh
 ├── Cargo.toml          ← workspace [phone, server]
@@ -141,7 +175,33 @@ Le script `scripts/setup-hotspot.sh` :
 └── target/release/
     └── server          ← binaire de production
 
-/home/PI_USER/recordings/   ← enregistrements (YYYYMMDD_HHMMSS.wav)
+/home/PI_USER/recordings/           ← enregistrements (<hex>.wav)
 /etc/systemd/system/livre-dor.service   ← ExecStart → server
 /etc/systemd/system/uap0.service        ← interface virtuelle AP
 ```
+
+---
+
+## Dépannage
+
+**`livre-dor.local` ne répond pas**
+- Vérifier que `avahi-daemon` tourne : `ssh pi "systemctl status avahi-daemon"`
+- Android peut mettre quelques secondes à résoudre le nom mDNS — normal.
+- Fallback : utiliser l'IP directe.
+
+**Hotspot non visible**
+- Le canal WiFi (`HOTSPOT_CHANNEL`) doit correspondre au canal de votre box.
+- Vérifier l'interface `uap0` : `ssh pi "ip link show uap0"`
+
+**Erreur de compilation sur le Pi**
+- Vérifier les dépendances audio : `sudo apt install -y libasound2-dev`
+- Si `cargo` n'est pas dans le PATH via SSH : géré automatiquement par `book.sh deploy`.
+
+**Service qui ne démarre pas**
+```bash
+./book.sh logs
+./book.sh status
+```
+
+**Frontend pas mis à jour après deploy**
+- Vider le cache navigateur (Ctrl+Shift+R) — le navigateur peut avoir mis en cache l'ancienne version.

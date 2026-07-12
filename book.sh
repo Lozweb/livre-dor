@@ -27,20 +27,22 @@ show_help() {
     echo "Usage: ./book.sh [commande]"
     echo ""
     echo "Commandes disponibles :"
-    echo "  deploy   - Synchronise, compile -p phone sur le Pi et redémarre le service"
-    echo "  rsync    - Synchronise uniquement les sources vers le Pi"
-    echo "  build    - Compile -p server en local"
-    echo "  restart  - Redémarre le service systemd sur le Pi"
-    echo "  status   - Vérifie l'état du service systemd"
-    echo "  logs     - Affiche les logs en direct (journalctl)"
-    echo "  hotspot  - Configure le hotspot WiFi dual-mode sur le Pi"
-    echo "  help     - Affiche cette aide"
+    echo "  deploy      - Build frontend, synchronise, compile -p server sur le Pi et redémarre"
+    echo "  rsync       - Synchronise uniquement les sources vers le Pi"
+    echo "  build       - Compile -p server en local"
+    echo "  restart     - Redémarre le service systemd sur le Pi"
+    echo "  status      - Vérifie l'état du service systemd"
+    echo "  logs        - Affiche les logs en direct (journalctl)"
+    echo "  hotspot     - Configure le hotspot WiFi dual-mode sur le Pi"
+    echo "  setup-mdns  - Configure avahi (livre-dor.local) sur le Pi (à faire une seule fois)"
+    echo "  help        - Affiche cette aide"
 }
 
 cmd_rsync() {
     log_info "Synchronisation des sources vers le Pi..."
     rsync -avz --delete \
         --exclude 'target/' --exclude '.git/' --exclude '.github/' \
+        --exclude 'frontend/node_modules/' \
         ./ ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}
     if [ $? -eq 0 ]; then
         log_success "Synchronisation terminée."
@@ -48,6 +50,16 @@ cmd_rsync() {
         log_error "Erreur rsync."
         exit 1
     fi
+}
+
+cmd_build_frontend() {
+    log_info "Build du frontend React..."
+    (cd frontend && npm run build)
+    if [ $? -ne 0 ]; then
+        log_error "Build frontend échoué."
+        exit 1
+    fi
+    log_success "Frontend buildé dans frontend/dist/."
 }
 
 cmd_restart() {
@@ -65,6 +77,7 @@ case "$1" in
 
     deploy)
         log_info "Déploiement complet..."
+        cmd_build_frontend
         cmd_rsync
 
         log_info "Compilation -p server sur le Pi..."
@@ -76,7 +89,7 @@ case "$1" in
         fi
 
         cmd_restart
-        log_success "Déploiement terminé."
+        log_success "Déploiement terminé. Accessible sur http://livre-dor.local"
         ;;
 
     rsync)
@@ -111,6 +124,27 @@ case "$1" in
             log_success "Hotspot configuré."
         else
             log_error "Échec de la configuration du hotspot."
+            exit 1
+        fi
+        ;;
+
+    setup-mdns)
+        log_info "Configuration mDNS (livre-dor.local) sur le Pi..."
+        ssh ${REMOTE_USER}@${REMOTE_HOST} "bash -s" << 'EOF'
+set -e
+sudo apt-get install -y avahi-daemon
+sudo hostnamectl set-hostname livre-dor
+if ! grep -q "127.0.1.1.*livre-dor" /etc/hosts; then
+    sudo sed -i "s/^127.0.1.1.*/127.0.1.1\tlivre-dor/" /etc/hosts
+fi
+sudo systemctl enable avahi-daemon
+sudo systemctl restart avahi-daemon
+echo "mDNS configuré. Le Pi sera accessible sur http://livre-dor.local"
+EOF
+        if [ $? -eq 0 ]; then
+            log_success "mDNS configuré. Accessible sur http://livre-dor.local"
+        else
+            log_error "Échec configuration mDNS."
             exit 1
         fi
         ;;

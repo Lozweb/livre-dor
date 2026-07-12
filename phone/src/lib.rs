@@ -10,6 +10,8 @@ mod audio;
 mod files;
 mod gpio;
 
+pub use files::{list_recordings, RecordingInfo};
+
 pub const GPIO_LED: u8 = 17;
 pub const GPIO_BUTTON: u8 = 27;
 pub const RECORDINGS_DIR: &str = "/home/julien/recordings";
@@ -58,7 +60,7 @@ pub fn run(state: Arc<RwLock<PhoneState>>) -> Result<()> {
                 }
             }
             PhoneState::Recording => {
-                let path = files::timestamped_wav_path(RECORDINGS_DIR);
+                let path = files::random_wav_path(RECORDINGS_DIR);
                 println!("Enregistrement en cours... Parlez après le bip.");
                 audio::record_until_button(&path, &buttons.button)?;
                 println!("Téléphone raccroché → Enregistrement sauvegardé");

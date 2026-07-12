@@ -49,6 +49,14 @@ Si raccroché pendant l'intro : retour Idle sans enregistrer.
 - Interdit : déployer sur le Pi (`./book.sh deploy`, rsync, restart service).
 - SSH Pi : lecture seule, uniquement si explicitement autorisé pour un diagnostic.
 
+**Frontend (React TypeScript)**
+- Paradigme fonctionnel exclusivement — pas de classes.
+- Pattern API en trois fichiers dans `frontend/src/api/` :
+  - `<resource>.type.ts` — types TypeScript des requêtes/réponses
+  - `<resource>.api.ts` — factory functions pour les appels fetch (pas de side effects)
+  - `<resource>.service.ts` — hooks React utilisant les fonctions api
+- Toute nouvelle lib npm nécessite une comparaison d'options avant ajout au `package.json`.
+
 **Communication**
 - Bref, technique, direct. Pas de formules de politesse ni de récapitulatifs inutiles.
 - Critiquer si nécessaire.

@@ -64,7 +64,7 @@ Pull-up interne activé par le code — aucune résistance externe nécessaire.
 
 > Raccrocher pendant l'intro interrompt sans enregistrer.
 
-Les enregistrements sont sauvegardés dans `~/recordings/` au format `YYYYMMDD_HHMMSS.wav`.
+Les enregistrements sont sauvegardés dans `~/recordings/` avec un nom aléatoire (`<hex>.wav`). L'ordre chronologique est déterminé par la date de modification du fichier.
 
 ---
 
@@ -72,18 +72,15 @@ Les enregistrements sont sauvegardés dans `~/recordings/` au format `YYYYMMDD_H
 
 Le serveur expose une interface de gestion accessible depuis un navigateur.
 
-**Fonctionnalités prévues :**
+**Fonctionnalités :**
 - Lister, écouter et télécharger les enregistrements
-- Gérer le fichier d'introduction
-- Visualiser l'état du téléphone en temps réel (idle, intro, enregistrement)
 
 **Accès :**
-- Réseau local : `http://PI_IP:8080`
-- Via hotspot (smartphone ou laptop) : `http://192.168.4.1:8080`
+- `http://livre-dor.local` (depuis n'importe quel appareil sur le même réseau)
 
 ### Hotspot WiFi intégré
 
-Le Pi diffuse son propre réseau WiFi (`livre-dor` par défaut) en parallèle de sa connexion à la box. Connectez votre smartphone ou laptop à ce réseau, puis ouvrez `http://192.168.4.1:8080` dans le navigateur — aucun réseau local requis.
+Le Pi diffuse son propre réseau WiFi (`livre-dor` par défaut) en parallèle de sa connexion à la box. Connectez votre smartphone ou laptop à ce réseau, puis ouvrez `http://livre-dor.local` dans le navigateur — aucun réseau local requis.
 
 > Le canal WiFi du hotspot doit correspondre à celui de votre box. Voir [DEPLOY.md](DEPLOY.md) pour la configuration.
 
@@ -94,9 +91,10 @@ Le Pi diffuse son propre réseau WiFi (`livre-dor` par défaut) en parallèle de
 Voir [DEPLOY.md](DEPLOY.md) pour les instructions complètes.
 
 ```bash
-./book.sh deploy    # compiler et déployer sur le Pi
-./book.sh hotspot   # configurer le hotspot WiFi
-./book.sh logs      # suivre les logs en direct
+./book.sh deploy       # build frontend + compiler + déployer sur le Pi
+./book.sh hotspot      # configurer le hotspot WiFi (une seule fois)
+./book.sh setup-mdns   # configurer livre-dor.local via avahi (une seule fois)
+./book.sh logs         # suivre les logs en direct
 ```
 
 ---
