@@ -9,8 +9,11 @@ RESET='\033[0m'
 # ==============================================================================
 # CONFIGURATION (À modifier selon votre installation)
 # ==============================================================================
+# REMOTE_HOST doit correspondre au hostname défini sur le Pi à l'installation
+# de l'OS (raspi-config / Raspberry Pi Imager) + avahi (./book.sh setup-mdns).
+# Un hostname est stable ; une IP DHCP peut changer à chaque redémarrage.
 REMOTE_USER="julien"
-REMOTE_HOST="192.168.1.42"
+REMOTE_HOST="livre-dor"
 REMOTE_DIR="/home/julien/livre-dor"
 SERVICE_NAME="livre-dor"
 HOTSPOT_SSID="livre-dor"
@@ -33,7 +36,7 @@ show_help() {
     echo "  restart     - Redémarre le service systemd sur le Pi"
     echo "  status      - Vérifie l'état du service systemd"
     echo "  logs        - Affiche les logs en direct (journalctl)"
-    echo "  hotspot     - Configure le hotspot WiFi dual-mode sur le Pi"
+    echo "  hotspot     - Configure le hotspot WiFi standalone sur le Pi"
     echo "  setup-mdns  - Configure avahi (livre-dor.local) sur le Pi (à faire une seule fois)"
     echo "  help        - Affiche cette aide"
 }
@@ -116,7 +119,7 @@ case "$1" in
         ;;
 
     hotspot)
-        log_info "Configuration du hotspot WiFi sur le Pi..."
+        log_info "Configuration du hotspot WiFi standalone sur le Pi..."
         rsync -q scripts/setup-hotspot.sh ${REMOTE_USER}@${REMOTE_HOST}:/tmp/setup-hotspot.sh
         ssh ${REMOTE_USER}@${REMOTE_HOST} \
             "HOTSPOT_SSID='${HOTSPOT_SSID}' HOTSPOT_PASSWORD='${HOTSPOT_PASSWORD}' HOTSPOT_CHANNEL='${HOTSPOT_CHANNEL}' bash /tmp/setup-hotspot.sh"

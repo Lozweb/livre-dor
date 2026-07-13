@@ -78,11 +78,11 @@ Le serveur expose une interface de gestion accessible depuis un navigateur.
 **Accès :**
 - `http://livre-dor.local` (depuis n'importe quel appareil sur le même réseau)
 
-### Hotspot WiFi intégré
+### Hotspot WiFi intégré (standalone)
 
-Le Pi diffuse son propre réseau WiFi (`livre-dor` par défaut) en parallèle de sa connexion à la box. Connectez votre smartphone ou laptop à ce réseau, puis ouvrez `http://livre-dor.local` dans le navigateur — aucun réseau local requis.
+Le Pi fonctionne en standalone : il diffuse uniquement son propre réseau WiFi (`livre-dor` par défaut), sans connexion à une box ni à Internet. Connectez votre smartphone ou laptop à ce réseau, puis ouvrez `http://livre-dor.local` dans le navigateur.
 
-> Le canal WiFi du hotspot doit correspondre à celui de votre box. Voir [DEPLOY.md](DEPLOY.md) pour la configuration.
+> Voir [DEPLOY.md](DEPLOY.md) pour la configuration du hotspot et du hostname.
 
 ---
 
@@ -92,7 +92,7 @@ Voir [DEPLOY.md](DEPLOY.md) pour les instructions complètes.
 
 ```bash
 ./book.sh deploy       # build frontend + compiler + déployer sur le Pi
-./book.sh hotspot      # configurer le hotspot WiFi (une seule fois)
+./book.sh hotspot      # configurer le hotspot WiFi standalone (une seule fois)
 ./book.sh setup-mdns   # configurer livre-dor.local via avahi (une seule fois)
 ./book.sh logs         # suivre les logs en direct
 ```

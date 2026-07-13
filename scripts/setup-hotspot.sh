@@ -12,31 +12,36 @@ GREEN='\033[0;32m'; BLUE='\033[0;34m'; RED='\033[0;31m'; RESET='\033[0m'
 log_info() { echo -e "${BLUE}[INFO]${RESET} $1"; }
 log_ok()   { echo -e "${GREEN}[OK]${RESET} $1"; }
 
-# --- 1. Interface virtuelle uap0 ---
-if systemctl is-enabled uap0.service &>/dev/null; then
-    log_info "uap0.service déjà activé — skip"
-else
-    log_info "Création de uap0.service..."
-    printf '[Unit]\nDescription=Virtual AP interface uap0\nAfter=sys-subsystem-net-devices-wlan0.device\nBefore=NetworkManager.service\n\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/sbin/iw dev wlan0 interface add uap0 type __ap\nExecStop=/sbin/iw dev uap0 del\n\n[Install]\nWantedBy=multi-user.target\n' \
-        | sudo tee "$UAP0_SERVICE" > /dev/null
+# --- 1. Nettoyage de l'ancien mode dual (uap0 + connexion WiFi vers la box) ---
+if [ -f "$UAP0_SERVICE" ]; then
+    log_info "Suppression de l'ancien mode dual (uap0.service)..."
+    sudo systemctl stop uap0.service 2>/dev/null || true
+    sudo systemctl disable uap0.service 2>/dev/null || true
+    sudo rm -f "$UAP0_SERVICE"
     sudo systemctl daemon-reload
-    sudo systemctl enable uap0.service
-    sudo systemctl start uap0.service
-    log_ok "uap0.service activé"
+    sudo iw dev uap0 del 2>/dev/null || true
+    log_ok "uap0.service supprimé"
 fi
 
-if ! ip link show uap0 &>/dev/null; then
-    sudo systemctl start uap0.service
-fi
+log_info "Suppression des connexions WiFi client (STA) — le Pi fonctionne en standalone..."
+while read -r name; do
+    [ -z "$name" ] && continue
+    [ "$name" = "$CON_NAME" ] && continue
+    mode=$(nmcli -g 802-11-wireless.mode con show "$name" 2>/dev/null)
+    if [ "$mode" != "ap" ]; then
+        log_info "Suppression du profil client '$name'..."
+        sudo nmcli con delete "$name"
+    fi
+done < <(nmcli -t -f NAME,TYPE con show | awk -F: '$2=="802-11-wireless"{print $1}')
 
-# --- 2. Profil NM hotspot ---
+# --- 2. Profil AP directement sur wlan0 (interface physique) ---
 if nmcli con show "$CON_NAME" &>/dev/null; then
     log_info "Suppression du profil hotspot existant..."
     sudo nmcli con delete "$CON_NAME"
 fi
 
-log_info "Création du profil hotspot (SSID: $SSID, IP: $IP, canal: $CHANNEL)..."
-sudo nmcli con add type wifi ifname uap0 con-name "$CON_NAME" \
+log_info "Création du profil hotspot standalone (SSID: $SSID, IP: $IP, canal: $CHANNEL, interface: wlan0)..."
+sudo nmcli con add type wifi ifname wlan0 con-name "$CON_NAME" \
     ssid "$SSID" \
     802-11-wireless.mode ap \
     802-11-wireless.band bg \
@@ -45,11 +50,10 @@ sudo nmcli con add type wifi ifname uap0 con-name "$CON_NAME" \
     ipv4.addresses "${IP}/24" \
     wifi-sec.key-mgmt wpa-psk \
     wifi-sec.psk "$PASSWORD" \
-    connection.autoconnect yes \
-    connection.autoconnect-priority -10
+    connection.autoconnect yes
 
 sudo nmcli con up "$CON_NAME"
 
-log_ok "Hotspot actif — SSID: $SSID | IP: $IP | Canal: $CHANNEL"
+log_ok "Hotspot standalone actif — SSID: $SSID | IP: $IP | Canal: $CHANNEL | Interface: wlan0"
 echo ""
 nmcli dev status

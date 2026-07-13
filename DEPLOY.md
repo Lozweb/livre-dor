@@ -22,6 +22,8 @@ source "$HOME/.cargo/env"
 - `npm` (Node.js ≥ 18) pour builder le frontend
 - Clé SSH configurée : `ssh-copy-id PI_USER@PI_HOST`
 
+> **Hostname du Pi** : à l'installation de l'OS (Raspberry Pi Imager, options avancées, ou `sudo raspi-config` → *System Options* → *Hostname*), donnez au Pi le hostname `livre-dor` (ou adaptez `REMOTE_HOST`, `HOTSPOT_SSID`, etc. dans `book.sh` en conséquence). Les scripts (`book.sh`, `setup-mdns`) s'appuient sur ce hostname pour se connecter de façon stable — une IP DHCP peut changer à chaque redémarrage, un hostname résolu par avahi/mDNS non.
+
 ---
 
 ## Configurer book.sh
@@ -57,26 +59,20 @@ ssh PI_USER@PI_HOST "sudo cp ~/livre-dor/livre-dor.service /etc/systemd/system/ 
 
 ### 2. Configurer le hotspot WiFi
 
-Le Pi fonctionne en mode dual WiFi : connecté à votre box **et** point d'accès pour smartphones et laptops.
+Le Pi fonctionne en **standalone** : `wlan0` diffuse uniquement le point d'accès `livre-dor`, il n'est connecté à aucune box. Aucune connexion Internet n'est nécessaire ni utilisée — l'interface de gestion et le SSH sont accessibles uniquement via ce hotspot (ou par câble Ethernet en secours).
 
-Le canal du hotspot doit correspondre à celui de votre box, sinon certains appareils ne verront pas le réseau. Pour trouver le canal de votre box :
-
-```bash
-nmcli dev wifi list | grep '\*'
-# Repérez votre SSID et notez la colonne CHAN
-```
-
-Renseignez cette valeur dans `HOTSPOT_CHANNEL` dans `book.sh`, puis :
+Le canal WiFi (`HOTSPOT_CHANNEL` dans `book.sh`) est libre — aucune contrainte de le faire correspondre à une box, puisqu'il n'y en a plus.
 
 ```bash
 ./book.sh hotspot
 ```
 
 Le script `scripts/setup-hotspot.sh` :
-- Crée l'interface virtuelle `uap0` (persistante via systemd)
-- Configure NetworkManager pour le hotspot sur `uap0`
-- Laisse `wlan0` connecté à votre box normalement
+- Supprime l'ancien mode dual s'il existe (`uap0.service`, connexions WiFi client type STA)
+- Configure NetworkManager pour un hotspot directement sur `wlan0`
 - Est idempotent : relancez-le sans risque pour modifier la config
+
+> **Migration depuis l'ancien mode dual** : si votre Pi a été configuré avant ce changement (interface virtuelle `uap0` + connexion à une box), relancer `./book.sh hotspot` nettoie automatiquement l'ancienne configuration et bascule en standalone.
 
 ### 3. Configurer mDNS (accès par nom)
 
@@ -122,7 +118,7 @@ Suffit pour tout mettre à jour — frontend et backend.
 | `./book.sh restart` | Redémarre le service sur le Pi |
 | `./book.sh status` | État du service systemd |
 | `./book.sh logs` | Logs en direct (`journalctl -f`) |
-| `./book.sh hotspot` | Configure le hotspot WiFi dual-mode |
+| `./book.sh hotspot` | Configure le hotspot WiFi standalone |
 | `./book.sh setup-mdns` | Configure `livre-dor.local` via avahi (une seule fois) |
 
 ---
@@ -131,9 +127,9 @@ Suffit pour tout mettre à jour — frontend et backend.
 
 | Situation | URL |
 |---|---|
-| Même réseau local (box) | `http://livre-dor.local` |
-| Connecté au hotspot du Pi | `http://livre-dor.local` |
-| IP directe (fallback) | `http://192.168.1.X` (adapter selon votre config) |
+| Connecté au hotspot WiFi du Pi | `http://livre-dor.local` |
+| IP directe (fallback) | `http://192.168.4.1` |
+| Câble Ethernet direct (secours) | `http://livre-dor.local` |
 
 ---
 
@@ -150,7 +146,7 @@ cd frontend && npm run dev
 Le proxy Vite redirige `/api` vers le serveur Rust. L'adresse cible est configurable :
 
 ```bash
-VITE_API_TARGET=http://192.168.1.42 npm run dev
+VITE_API_TARGET=http://livre-dor.local npm run dev
 ```
 
 ---
@@ -177,7 +173,6 @@ VITE_API_TARGET=http://192.168.1.42 npm run dev
 
 /home/PI_USER/recordings/           ← enregistrements (<hex>.wav)
 /etc/systemd/system/livre-dor.service   ← ExecStart → server
-/etc/systemd/system/uap0.service        ← interface virtuelle AP
 ```
 
 ---
@@ -190,8 +185,8 @@ VITE_API_TARGET=http://192.168.1.42 npm run dev
 - Fallback : utiliser l'IP directe.
 
 **Hotspot non visible**
-- Le canal WiFi (`HOTSPOT_CHANNEL`) doit correspondre au canal de votre box.
-- Vérifier l'interface `uap0` : `ssh pi "ip link show uap0"`
+- Vérifier que `wlan0` est bien en mode AP : `ssh pi "nmcli dev status"` (device `wlan0`, connexion `livre-dor-hotspot`)
+- Si le Pi a été configuré avant le passage en standalone, relancer `./book.sh hotspot` pour nettoyer l'ancien mode dual (`uap0`).
 
 **Erreur de compilation sur le Pi**
 - Vérifier les dépendances audio : `sudo apt install -y libasound2-dev`

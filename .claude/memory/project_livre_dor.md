@@ -60,18 +60,21 @@ Machine à états : `Idle → PlayingIntro → Recording → Idle`
 ### server
 `phone` (path), `axum 0.7`, `tokio 1` (full), `tower-http 0.5` (fs+cors), `serde 1` (derive), `serde_json 1`
 
-## Dual WiFi Pi
+## WiFi Pi — standalone (depuis 2026-07-13)
 
-Le Pi tourne en mode AP+STA simultané :
-- `wlan0` → connexion client vers la box (192.168.1.42)
-- `uap0` → hotspot "livre-dor", IP fixe 192.168.4.1
-- Géré par NetworkManager, persistant via `uap0.service` + profil NM `livre-dor-hotspot`
-- Config dans `book.sh` : `HOTSPOT_SSID`, `HOTSPOT_PASSWORD`, `HOTSPOT_CHANNEL`
+Le mode dual AP+STA (uap0 virtuel + wlan0 client vers la box) a été abandonné : trop instable au reboot (le chipset WiFi du Pi 4 ne tenait pas la concurrence AP+STA de façon fiable au démarrage). Le Pi tourne désormais en **AP seul** :
+- `wlan0` → hotspot "livre-dor" directement (plus de `uap0`, plus de connexion à la box)
+- IP fixe 192.168.4.1, géré par NetworkManager (profil NM `livre-dor-hotspot`, `ipv4.method shared`)
+- Plus de service `uap0.service` (supprimé)
+- `eth0` reste disponible en secours (câble direct)
+- Config dans `book.sh` : `HOTSPOT_SSID`, `HOTSPOT_PASSWORD`, `HOTSPOT_CHANNEL` (canal libre, plus de contrainte de correspondance avec une box)
+- Script `scripts/setup-hotspot.sh` : idempotent, migre automatiquement l'ancien mode dual vers standalone si relancé sur un Pi pas encore migré
 
-**Point critique canal WiFi** : le laptop ne scanne que les canaux proches de sa connexion active. `HOTSPOT_CHANNEL` doit correspondre au canal de la box. Vérifier avec `nmcli dev wifi list` sur le laptop. Actuellement : canal 11.
+**REMOTE_HOST dans `book.sh` = hostname `livre-dor` (pas une IP)** — résolu via avahi/mDNS, stable contrairement à un bail DHCP. Important de fixer ce hostname à l'installation de l'OS (Raspberry Pi Imager / `raspi-config`).
 
-Smartphone → WiFi "livre-dor" → `http://192.168.4.1:8080`
-Laptop/réseau local → `http://192.168.1.42:8080`
+Smartphone/laptop → WiFi "livre-dor" → `http://livre-dor.local` ou `http://192.168.4.1`
+
+**Accès SSH sans mot de passe** : `ssh-copy-id julien@livre-dor` a été fait le 2026-07-13, la clé publique du laptop de Julien est dans `authorized_keys` du Pi.
 
 ## Workflow de déploiement
 
